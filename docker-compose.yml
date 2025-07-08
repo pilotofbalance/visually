@@ -1,0 +1,52 @@
+services:
+  typesense:
+    # Build your custom image from the Dockerfile
+    build:
+      context: . # Build context is the root of your project
+      dockerfile: typesense-data/Dockerfile # Path to your custom Dockerfile
+    ports:
+      - "8108:8108"
+    volumes:
+      # Mount your JSONL data file directly into the container
+      - ./typesense-data/catalog.jsonl:/docker-entrypoint-initdb.d/catalog.jsonl:ro
+      # Persistent volume for Typesense data
+      - typesense_data:/data
+    environment:
+      # These variables are read from the .env file
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY}
+      TYPESENSE_COLLECTION_NAME: ${TYPESENSE_COLLECTION_NAME}
+      TYPESENSE_DATA_DIR: /data # Explicitly set this for the script
+    healthcheck: # Docker's own healthcheck to ensure the service is truly up
+      test: ["CMD", "curl", "-f", "http://localhost:8108/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  backend:
+    build:
+      context: . # Build context is the root of your project
+      dockerfile: backend/Dockerfile # Path to your custom Dockerfile
+    ports:
+      - "8080:8080" # Expose Go service port to host
+    environment:
+      TYPESENSE_HOST: typesense # Service name in docker-compose
+      TYPESENSE_PORT: 8108
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY} # <-- IMPORTANT: Replace!
+      TYPESENSE_COLLECTION_NAME: ${TYPESENSE_COLLECTION_NAME} # <-- IMPORTANT: Replace with your collection name
+      TYPESENSE_SEARCH_BY_FIELDS: "title" # <-- IMPORTANT: Adjust fields to search by
+      APP_PORT: 8080
+
+  frontend:
+    build:
+      context: . # Build context is the root of your project
+      dockerfile: frontend/Dockerfile # Path to your React app's Dockerfile
+    ports:
+      - "3000:80" # Map host port 3000 to container port 80 (Nginx)
+    environment:
+      # React apps typically need a build-time variable for API URL if not proxied
+      # But with Nginx proxy, we can use relative paths like /api/health
+      NODE_ENV: production # Ensure production build for Nginx serving
+
+volumes:
+  typesense_data: # Define the named volume for Typesense persistence
